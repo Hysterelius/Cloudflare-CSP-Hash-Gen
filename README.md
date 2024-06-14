@@ -14,5 +14,5 @@ rust_generate_csp_hash index.html _headers
 ## Install
 To install the application, run the following command:
 ```bash
-cargo install --git https://
+cargo install --git https://github.com/Hysterelius/Cloudflare-CSP-Hash-Gen
 ```
