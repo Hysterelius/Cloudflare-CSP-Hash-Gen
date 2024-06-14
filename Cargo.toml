@@ -1,0 +1,17 @@
+[package]
+name = "rust_generate_csp_hash"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "rust_generate_csp_hash"
+path = "src/main.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+scraper = "^0.19"
+base64 = "^0.22"
+sha2 = "^0.10"
+structopt = "^0.3"
+regex = "^1.10"
