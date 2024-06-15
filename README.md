@@ -14,7 +14,7 @@ rust_generate_csp_hash index.html _headers
 ### Recommend Usage
 This service was meant to run with Vite and (Vite single file)[https://github.com/richardtallent/vite-plugin-singlefile], which is where the entire `index.html` is generated from. So put this in your `package.json`:
 ```json
-"build": "vite build && rust_generate_csp_hash dist/index.html dist/_headers
+"build": "vite build && rust_generate_csp_hash dist/index.html dist/_headers"
 ```
 
 ## Install
