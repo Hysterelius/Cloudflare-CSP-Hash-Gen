@@ -125,7 +125,7 @@ fn main() -> io::Result<()> {
     } else {
         // Create a new CSP header if none exists
         let new_csp_header = format!(
-            "Content-Security-Policy: script-src 'self' '{}'; style-src 'self' '{}';",
+            "\n\tContent-Security-Policy: script-src 'self' '{}'; style-src 'self' '{}';",
             script_hashes.join(" "),
             style_hashes.join(" ")
         );
