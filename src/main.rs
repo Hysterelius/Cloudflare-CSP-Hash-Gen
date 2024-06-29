@@ -14,9 +14,21 @@ use structopt::StructOpt;
 // Declare a global AtomicBool for verbose mode
 static VERBOSE_MODE: AtomicBool = AtomicBool::new(false);
 static PROCESS_ALL: AtomicBool = AtomicBool::new(false);
+static OVERWRITE: AtomicBool = AtomicBool::new(true);
 
-fn retrieve_verbose_mode() -> bool {
-    VERBOSE_MODE.load(Ordering::SeqCst)
+trait AtomicBoolExt {
+    fn read(&self) -> bool;
+    fn write(&self, value: bool);
+}
+
+impl AtomicBoolExt for AtomicBool {
+    fn read(&self) -> bool {
+        self.load(Ordering::SeqCst)
+    }
+
+    fn write(&self, value: bool) {
+        self.store(value, Ordering::SeqCst);
+    }
 }
 
 /// A tool to generate Cloudflare _headers file with CSP hashes
@@ -35,7 +47,16 @@ struct Cli {
     #[structopt(parse(from_os_str), short, long)]
     directory: Option<PathBuf>,
 
-    /// Process all files
+    /// Optional: Process a single file
+    #[structopt(parse(from_os_str), short, long, conflicts_with = "process-all-files")]
+    // Fix this to kebab case, https://github.com/TeXitoi/structopt/issues/459
+    file: Option<PathBuf>,
+
+    /// Disable overwriting the _headers file
+    #[structopt(short, long)]
+    no_overwrite: bool,
+
+    /// Process all files, disables the 100 000 file limit
     #[structopt(short, long)]
     process_all_files: bool,
 }
@@ -46,10 +67,11 @@ fn main() -> io::Result<()> {
     let args = Cli::from_args();
 
     // Set the global verbose mode
-    VERBOSE_MODE.store(args.verbose, Ordering::SeqCst);
-    PROCESS_ALL.store(args.process_all_files, Ordering::SeqCst);
+    VERBOSE_MODE.write(args.verbose);
+    PROCESS_ALL.write(args.process_all_files);
+    OVERWRITE.write(!args.no_overwrite);
 
-    if retrieve_verbose_mode() {
+    if VERBOSE_MODE.read() {
         println!("{args:#?}");
     }
     let mut hashes: Hashes = Hashes {
@@ -60,6 +82,21 @@ fn main() -> io::Result<()> {
     // Change the working directory if specified
     if let Some(dir) = args.directory {
         std::env::set_current_dir(dir)?;
+    }
+
+    // Act if a single file is specified
+    if args.file.is_some() {
+        let file = args.file.unwrap();
+        if VERBOSE_MODE.read() {
+            println!("Processing single file: {file:#?}");
+        }
+        let ext = file.extension().unwrap_or_default().to_str().unwrap();
+        if file.is_file() && ALLOWED_FILES.contains(&ext) {
+            let file_hashes = process_file(&file, ext)?;
+            hashes.push(file_hashes);
+        }
+        add_hashes(&args.output, hashes.script_hashes, hashes.style_hashes)?;
+        process::exit(0);
     }
 
     // Process all files
@@ -78,12 +115,12 @@ fn main() -> io::Result<()> {
                     continue;
                 }
 
-                if retrieve_verbose_mode() {
+                if VERBOSE_MODE.read() {
                     println!("Searching file: {path:#?}");
                 }
                 let ext = path.extension().unwrap_or_default().to_str().unwrap();
                 if path.is_file() && ALLOWED_FILES.contains(&ext) {
-                    if retrieve_verbose_mode() {
+                    if VERBOSE_MODE.read() {
                         println!("Processing file: {path:#?}");
                     }
                     let file_hashes = process_file(&path, ext)?;
@@ -95,7 +132,7 @@ fn main() -> io::Result<()> {
     }
 
     // Add the hashes to the _headers file
-    if retrieve_verbose_mode() {
+    if VERBOSE_MODE.read() {
         println!("Adding hashes to the _headers file");
         println!("{hashes:#?}");
     }
@@ -187,7 +224,7 @@ fn add_hashes(
 
     // Find and update the CSP header
     let csp_re = Regex::new(r"(?i)Content-Security-Policy:[^\n]+").unwrap();
-    if retrieve_verbose_mode() {
+    if VERBOSE_MODE.read() {
         println!("{headers_content:#?}");
         println!(
             "Does the CSP header exist? {}",
@@ -214,10 +251,18 @@ fn add_hashes(
             let mut valid_hashes: Vec<String> = existing_script_src
                 .split_whitespace()
                 .skip(1)
-                .filter(|hash| script_hashes.contains(&(*hash).to_string()))
+                .filter(|hash| {
+                    // Check if the OVERWRITE flag is set, if it is set (default value) it will
+                    // overwrite existing (outdated) hashes, if not it will keep them
+                    if OVERWRITE.read() {
+                        script_hashes.contains(&(*hash).to_string())
+                    } else {
+                        true
+                    }
+                })
                 .map(std::string::ToString::to_string)
                 .collect();
-            if retrieve_verbose_mode() {
+            if VERBOSE_MODE.read() {
                 println!("Script hashes: {valid_hashes:#?}");
             }
 
